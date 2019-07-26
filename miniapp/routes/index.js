@@ -26,6 +26,9 @@ router.post('/board/delete', controller.deleteBoard)
 //Invite to board
 router.post('/board/invite', controller.inviteBoard)
 
+//Get all board members
+router.get('/board/members', controller.getBoardMembers)
+
 //Create list page
 router.post('/list/add', controller.createList)
 
@@ -35,6 +38,9 @@ router.get('/list', controller.getList)
 //Get all lists of a board
 router.get('/list/all', controller.getLists)
 
+//Delete a list
+router.post('/list/delete', controller.deleteList)
+
 //Create task page
 router.post('/task/add', controller.createTask)
 
@@ -43,6 +49,12 @@ router.get('/task', controller.getTask)
 
 //Get all tasks of a list
 router.get('/task/all', controller.getTasks)
+
+//Get all task members
+router.get('/task/members', controller.getTaskMembers)
+
+//Delete a task
+router.post('/task/delete', controller.deleteTask)
 
 //Get the dueDate
 router.get('/task/info/dueDate', controller.getDueDate)
@@ -73,5 +85,8 @@ router.put('/task/info/dueDate/:id', controller.updateDueDate)
 
 //Update list a task belongs to
 router.put('/task/info/list/:id', controller.updateListOfTask)
+
+//Get last insert id
+router.get('/lastID', controller.getLastInsert)
 
 module.exports = router;

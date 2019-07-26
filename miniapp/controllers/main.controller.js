@@ -1,9 +1,6 @@
 const repo = require('../repository/main.repository.js')
 
-function validateUsername(string){
-  let regex = /^(([^<>()\[\]\\.,;:\s@"]+(\.[^<>()\[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/
-  return regex.test(string.toLowerCase())
-}
+// 
 
 function validateName(string){
   let regex = /^[a-zA-Z\-]+$/
@@ -15,39 +12,44 @@ const controller = {
   createUser: function(req,res){
     //check if there are no null fields
     if( !(req.body.firstName && req.body.lastName && req.body.username && req.body.password )){
-      res.send('INCOMPLETE FIELDS')
+      res.status(400).send({message:'INCOMPLETE FIELDS'})
       return false
     }else{
       //check if names are valid
       if(!(validateName(req.body.firstName) && validateName(req.body.lastName))){
-        res.send('NAME MUST ONLY HAVE LETTERS or -')
+        res.status(400).send({message:'NAME MUST ONLY HAVE LETTERS or -'})
+        return false
       }
+      //validate username
 
-
-
-      // repo.createUser(req.body)
-      // .then(function(data){
-      //   //Insert into users table the new user
-      //   res.send('USER ' + req.body.firstName + ' ' + req.body.lastName + ' CREATED')
-      //   res.json(data)
-      // }, 
-      // //
-      // function(error){
-      //   res.send('USER CREATION FAILED')
-      // })
+      repo.createUserRedis(req.body)
+      .then(function(data){
+        console.log(data)
+        //Insert into users table the new user
+        res.status(200).send({message:'USER ' + req.body.firstName + ' ' + req.body.lastName + ' CREATED'})
+        //res.json(data)
+      }).catch(function(err){
+        res.status(500).send({ error: { statusCode: 500, message: err.message, errorCode: '1400'} })
+      })
     }
   },
 
   //Get user (for login)
   getUser: function(req,res){
-    repo.getUser(req.body)
+    repo.getUserRedis(req.body)
     .then(function(data){
+      console.log(data)
+      if(data.password == req.body.password){
+        res.status(200).send(data)
+      }else throw new Error('WRONG USERNAME OR PASSWORD')
       //check if the user can be retrieved (not empty array)
-      if(data[0].length == 0){
-        res.send('WRONG USERNAME OR PASSWORD')
-      }
-      else res.send(data[0])
-    }) 
+      // if(data[0].length == 0){
+      //   throw new Error('WRONG USERNAME OR PASSWORD')
+      // }
+      // else res.status(200).send(data[0])
+    }).catch(function(err){
+      res.status(403).send({ error: { statusCode: 403, message: err.message, errorCode: '1400'} })
+    })
   },
 
   //Get all users
@@ -55,9 +57,11 @@ const controller = {
     repo.getAllUsers().then(function (data){
       //check if the user can be retrieved (not empty array)
       if(data[0].length == 0){
-        res.send('USERS DO NOT EXIST')
+        throw new Error('USERS DO NOT EXIST')
       }
       else res.send(data[0])
+    }).catch(function(err){
+      res.send({ error: { statusCode: 403, message: err.message, errorCode: '1400'} })
     })
   },
 
@@ -67,11 +71,10 @@ const controller = {
     repo.createBoard(req.body)
     .then(function(data){
       //Insert into board table the new board
-      res.send(req.body.title + ' BOARD CREATED')
+      res.status(200).send({success:req.body.name + ' BOARD CREATED', data: data})
     },
     function(error){
-      console.log(error.message)
-      res.send('BOARD CREATION FAILED')
+      res.status(403).send({ error: { statusCode: 403, message: error.message, errorCode: '1400'} })
     })
   },
 
@@ -80,9 +83,11 @@ const controller = {
     repo.getBoard(req.query.boardID).then(function (data){
       //check if tasks can be retrieved (not empty array)
       if(data[0].length == 0){
-        res.send('BOARD DOES NOT EXIST')
+        throw new Error('BOARD DOES NOT EXIST')
       }
       else res.send(data[0])
+    }).catch(function(err){
+      res.send({ error: { statusCode: 403, message: err.message, errorCode: '1400'} })
     })
   },
 
@@ -91,20 +96,22 @@ const controller = {
     repo.getBoards(req.query.userID).then(function (data){
       //check if the user can be retrieved (not empty array)
       if(data[0].length == 0){
-        res.send('BOARDS DO NOT EXIST')
+        throw new Error('BOARDS DO NOT EXIST')
       }
       else res.send(data[0])
+    }).catch(function(err){
+      res.send({ error: { statusCode: 403, message: err.message, errorCode: '1400'} })
     })
   },
 
   //Delete a board
   deleteBoard: function(req,res){
     repo.deleteBoard(req.body)
-    .then(function(){
-      res.send('BOARD DELETED')
+    .then(function(msg){
+      res.send({message:'BOARD DELETED'})
     },
     function(error){
-      res.send('BOARD DELETION FAILED')
+      res.send({error:'BOARD DELETION FAILED'})
     })
   },
 
@@ -112,11 +119,23 @@ const controller = {
   inviteBoard: function(req,res){
     repo.inviteBoard(req.body)
     .then(function(data){
-      res.send('USER ' + req.body.userID + ' WAS INVITED TO ' + req.body.boardID + ' BOARD')
+      res.send({success:'USER ' + req.body.userID + ' WAS INVITED TO ' + req.body.boardID + ' BOARD'})
     },
     function(error){
-      console.log(error.message)
-      res.send('BOARD INVITATION FAILED')
+      res.send({ error: { statusCode: 403, message: 'BOARD INVITATION FAILED', errorCode: '1400'} })
+    })
+  },
+
+  getBoardMembers: function(req,res){
+    repo.getBoardMembers(req.query.boardID)
+    .then(function (data){
+      //check if users can be retrieved (not empty array)
+      if(data[0].length == 0){
+        throw new Error('MEMBERS DO NOT EXIST')
+      }
+      else res.send(data[0])
+    }).catch(function(err){
+      res.send({ error: { statusCode: 403, message: err.message, errorCode: '1400'} })
     })
   },
 
@@ -125,10 +144,10 @@ const controller = {
     repo.createList(req.body.boardID,req.body.title)
     .then(function(data){
       //Insert into board table the new board
-      res.send(req.body.title + ' LIST CREATED')
+      res.status(200).send({success: req.body.title + ' LIST CREATED'})
     },
     function(error){
-      res.send('LIST CREATION FAILED')
+      res.status(403).send({ error: { statusCode: 403, message: 'LIST CREATION FAILED', errorCode: '1400'} })
     })
   },
 
@@ -137,9 +156,11 @@ const controller = {
     repo.getList(req.query.listID).then(function (data){
       //check if tasks can be retrieved (not empty array)
       if(data[0].length == 0){
-        res.send('LIST DOES NOT EXIST')
+        throw new Error('LIST DOES NOT EXIST')
       }
       else res.send(data[0])
+    }).catch(function(err){
+      res.send({ error: { statusCode: 403, message: err.message, errorCode: '1400'} })
     })
   },
 
@@ -148,21 +169,34 @@ const controller = {
     repo.getLists(req.query.boardID).then(function (data){
       //check if lists can be retrieved (not empty array)
       if(data[0].length == 0){
-        res.send('LISTS DO NOT EXIST')
+        throw new Error('LISTS DO NOT EXIST')
       }
       else res.send(data[0])
+    }).catch(function(err){
+      res.send({ error: { statusCode: 403, message: err.message, errorCode: '1400'} })
+    })
+  },
+
+  //Delete a task
+  deleteList: function(req,res){
+    repo.deleteList(req.body)
+    .then(function(msg){
+      res.send({message:'LIST DELETED'})
+    },
+    function(error){
+      res.send({error:'LIST DELETION FAILED'})
     })
   },
 
   //Create a task
   createTask: function(req,res){
-    repo.createTask(req.body.listID,req.body)
+    repo.createTaskRedis(req.body.listID,req.body)
     .then(function(data){
       //Insert into board table the new board
-      res.send(req.body.title + ' TASK CREATED')
+      res.status(200).send({success: req.body.title + ' TASK CREATED'})
     },
     function(error){
-      res.send('TASK CREATION FAILED')
+      res.status(403).send({ error: { statusCode: 403, message: error.message, errorCode: '1400'} })
     })
   },
 
@@ -171,9 +205,11 @@ const controller = {
     repo.getTask(req.query.taskID).then(function (data){
       //check if tasks can be retrieved (not empty array)
       if(data[0].length == 0){
-        res.send('TASK DOES NOT EXIST')
+        throw new Error('TASK DOES NOT EXIST')
       }
       else res.send(data[0])
+    }).catch(function(err){
+      res.send({ error: { statusCode: 403, message: err.message, errorCode: '1400'} })
     })
   },
 
@@ -182,20 +218,50 @@ const controller = {
     repo.getTasks(req.query.listID).then(function (data){
       //check if tasks can be retrieved (not empty array)
       if(data[0].length == 0){
-        res.send('TASKS DO NOT EXIST')
+        throw new Error('TASKS DO NOT EXIST')
       }
       else res.send(data[0])
+    }).catch(function(err){
+      res.send({ error: { statusCode: 403, message: err.message, errorCode: '1400'} })
+    })
+  },
+
+  //Get a single board of a user
+  getTaskMembers: function(req,res){
+    repo.getTaskMembers(req.query.taskID).then(function (data){
+      //check if members can be retrieved (not empty array)
+      if(data[0].length == 0){
+        throw new Error('MEMBERS DO NOT EXIST')
+      }
+      else res.send(data[0])
+    }).catch(function(err){
+      res.send({ error: { statusCode: 403, message: err.message, errorCode: '1400'} })
+    })
+  },
+
+  //Delete a task
+  deleteTask: function(req,res){
+    repo.deleteTaskRedis(req.body)
+    .then(function(msg){
+      res.send({message:'TASK DELETED'})
+    },
+    function(error){
+      res.send({error: { statusCode: 403, message: error.message, errorCode: '1400'} })
     })
   },
 
   //Get a due date
   getDueDate: function(req,res){
-    repo.getDueDate(req.query.id)
+    repo.getDueDateRedis(req.query.taskID)
     .then(function(data){
-      res.send('DUE DATE IS: ' + data[0][0].date)
+      console.log(data)
+      let options = { year: 'numeric', month: 'long', day: 'numeric' };
+      let date  = new Date((+data.substr(0,10))*1000);
+      let dueDate = date.toLocaleDateString("en-US",options);
+      res.send({message: "success", "dueDate": dueDate})
     },
     function(error){
-      res.send('DATE RETRIEVAL FAILED')
+      res.send({ error: { statusCode: 403, message: error.message, errorCode: '1400'} })
     })
   },
 
@@ -203,10 +269,11 @@ const controller = {
   addTaskMember: function(req,res){
     repo.addTaskMember(req.body.taskID,req.body.userID)
     .then(function(data){
-      res.send(data[0][0].firstName + ' ' + data[0][0].lastName + ' WAS ADDED TO TASK ' + req.body.taskID)
+      res.send({success: 'member added'})
     },
     function(error){
-      res.send('ADDING FAILED')
+      console.log(error)
+      res.send({ error: { statusCode: 403, message: error.message, errorCode: '1400'} })
     })
   },
 
@@ -214,10 +281,10 @@ const controller = {
   delTaskMember: function(req,res){
     repo.delTaskMember(req.body.taskID,req.body.userID)
     .then(function(data){
-      res.send('USER ' + req.body.userID + ' WAS DELETED FROM TASK ' + req.body.taskID)
+      res.send({success:'USER ' + req.body.userID + ' WAS DELETED FROM TASK ' + req.body.taskID})
     },
     function(error){
-      res.send('DELETION FAILED')
+      res.send({ error: { statusCode: 403, message: 'DELETION FAILED', errorCode: '1400'} })
     })
   },
 
@@ -225,10 +292,10 @@ const controller = {
   addLabel: function(req,res){
     repo.addLabel(req.body)
     .then(function(data){
-      res.send(req.body.label + ' WAS ADDED TO TASK ' + req.body.taskID)
+      res.send({success:req.body.label + ' WAS ADDED TO TASK ' + req.body.taskID})
     },
     function(error){
-      res.send('ADDING FAILED')
+      res.send({ error: { statusCode: 403, message: 'ADDING FAILED', errorCode: '1400'} })
     })
   },
 
@@ -237,9 +304,11 @@ const controller = {
     repo.getLabels(req.query.taskID).then(function (data){
       //check if tasks can be retrieved (not empty array)
       if(data[0].length == 0){
-        res.send('LABELS DO NOT EXIST')
+        throw new Error('LABELS DO NOT EXIST')
       }
       else res.send(data[0])
+    }).catch(function(err){
+      res.send({ error: { statusCode: 403, message: err.message, errorCode: '1400'} })
     })
   },
 
@@ -247,10 +316,10 @@ const controller = {
   delLabel: function(req,res){
     repo.delLabel(req.body.taskID,req.body.label)
     .then(function(data){
-      res.send(req.body.label + ' WAS DELETED FROM TASK ' + req.body.taskID)
+      res.send({success:req.body.label + ' WAS DELETED FROM TASK ' + req.body.taskID})
     },
     function(error){
-      res.send('LABEL DELETION FAILED')
+      res.send({ error: { statusCode: 403, message: 'LABEL DELETION FAILED', errorCode: '1400'} })
     })
   },
 
@@ -258,11 +327,10 @@ const controller = {
   updateTaskTitle: function(req,res){
     repo.updateTaskTitle(req.params.id,req.body.title)
     .then(function(data){
-      res.send('TASK ' + req.params.id + ' TITLE WAS UPDATED')
+      res.send({success:'TASK ' + req.params.id + ' TITLE WAS UPDATED'})
     },
     function(error){
-      console.log(error.message)
-      res.send('UPDATE FAILED')
+      res.send({ error: { statusCode: 403, message: 'UPDATE FAILED', errorCode: '1400'} })
     })
   },
 
@@ -270,11 +338,10 @@ const controller = {
   updateDesc: function(req,res){
     repo.updateDesc(req.params.id,req.body.description)
     .then(function(data){
-      res.send('TASK ' + req.params.id + ' DESCRIPTION WAS UPDATED')
+      res.send({success:'TASK ' + req.params.id + ' DESCRIPTION WAS UPDATED'})
     },
     function(error){
-      console.log(error.message)
-      res.send('UPDATE FAILED')
+      res.send({ error: { statusCode: 403, message: 'UPDATE FAILED', errorCode: '1400'} })
     })
   },
 
@@ -282,10 +349,10 @@ const controller = {
   updateDueDate: function(req,res){
     repo.updateDueDate(req.params.id,req.body.dueDate)
     .then(function(data){
-      res.send('TASK ' + req.params.id + ' DUE DATE WAS UPDATED')
+      res.send({success: 'TASK ' + req.params.id + ' DUE DATE WAS UPDATED'})
     },
     function(error){
-      res.send('UPDATE FAILED')
+      res.send({ error: { statusCode: 403, message: 'UPDATE FAILED', errorCode: '1400'} })
     })
   },
 
@@ -296,11 +363,21 @@ const controller = {
       return repo.getList(req.body.listID)
     })
     .then(function(data){
-      res.send('TASK ' + req.params.id + ' IS NOW IN THE LIST ' + data[0][0].title)
+      res.send({success: 'TASK ' + req.params.id + ' IS NOW IN THE LIST ' + data[0][0].title})
     },
     function(error){
-      console.log(error.message)
-      res.send('UPDATE FAILED')
+      res.send({ error: { statusCode: 403, message: 'UPDATE FAILED', errorCode: '1400'} })
+    })
+  },
+
+  //Get last insert ID
+  getLastInsert: function(req,res){
+    repo.getLastInsert()
+    .then(function(data){
+      res.send(data[0])
+    },
+    function(error){
+      res.send({ error: { statusCode: 403, message: 'LABEL DELETION FAILED', errorCode: '1400'} })
     })
   }
 }
